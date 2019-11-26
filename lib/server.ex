@@ -196,14 +196,13 @@ defmodule Twitter.Server do
 
   def tweetLive(tweet, userList, userId) do
     Enum.each(userList, fn(toUser) ->
-    [_,pid] = :ets.lookup(:allUsers, toUser)
-    if pid == nil do
-      send(pid , {:tweetLive, tweet<>"-Tweet from: "<>userId})
-    end
-  end)
-
+      [_,pid] = :ets.lookup(:allUsers, toUser)
+      if pid == nil do
+        send(pid , {:tweetLive, tweet<>"-Tweet from: "<>userId})
+      end
+    end)
   end
-
+  
   def init(:noargs) do
     {:ok,%{}}
   end
