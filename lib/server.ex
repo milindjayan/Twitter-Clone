@@ -25,27 +25,15 @@ defmodule Twitter.Server do
     :ets.new(:mentionsHashtags, [:set, :public, :named_table])
   end
 
-  def register_user(userId,nTweets,isOnline) do
-   GenServer.call(:twitterServer,{:registerUser,userId,nTweets,isOnline})
-  end
-
-
-
-  #def loginUser(userId,nTweets,isOnline) do
-  #  GenServer.call(:twitterServer,{:loginUser,userId,nTweets})
-  #end
-
-  #def logoutUser(userId,nTweets,isOnline) do
-  #  GenServer.call(:twitterServer,{:logoutUser,userId,nTweets})
-  #end
 
   def delete_user(userId) do
     GenServer.call(:twitterServer,{:deleteUser,userId})
   end
 
-  def add_follower(userId,tofollowID) do
-   GenServer.cast(:twitterServer,{:addFollower,userId,tofollowID})
+  def register_user(userId,nTweets,isOnline) do
+    GenServer.call(:twitterServer,{:registerUser,userId,nTweets,isOnline})
   end
+
 
   def get_followers(userId) do
     [tuple] = :ets.lookup(:followers, userId)
@@ -69,13 +57,6 @@ defmodule Twitter.Server do
     :ets.insert(:following,{userId,updatedFollowingList})
   end
 
-  #def tweet(userId,tweet) do
-  #  GenServer.cast(:twitterServer,{:tweet,userId,tweet})
-  #end
-
-  #def retweet(userId,tweet) do
-  #  GenServer.cast(:twitterServer,{:tweet,userId,"RT:"<>tweet})
-  #end
 
   def getTweetsMade(userId) do
     [tuple] = :ets.lookup(:tweetsMade, userId)
@@ -98,6 +79,10 @@ defmodule Twitter.Server do
     end
   end
 
+  def add_follower(userId,tofollowID) do
+    GenServer.cast(:twitterServer,{:addFollower,userId,tofollowID})
+  end
+
   def login_user(userId) do
     GenServer.call(:twitterServer,{:loginUser,userId,0})
   end
@@ -115,38 +100,42 @@ defmodule Twitter.Server do
         :ets.insert(:tweetsMade,{userId,[]})
         if :ets.lookup(:followers, userId) == [ ] do
           :ets.insert(:followers,{userId,[ ]})
+        end
+
+        "Registration Successful with Id: user#{userId}"
+      else
+        "Registration Failed. UserID: user#{userId} is already in use."
       end
-      "Registration Successful with Id: user#{userId}"
-    else
-      "Registration Failed. UserID: user#{userId} is already in use."
-    end
+      sendAcknowledgement(:userCreationResp)
     {:reply,response,state}
   end
 
-  def handle_call({:loginUser,userId,_nTweets},_from,state) do
+  def handle_call({:loginUser,userId,nTweets},_from,state) do
     response=
       if :ets.lookup(:allUsers, userId) == [] do
         "User: #{userId} not found. Login failed."
       else
         [{_,pid,state}] = :ets.lookup(:allUsers, userId)
-        if state == :offline  do
+        if state == :offline do
           #{:ok,pid} = Twitter.Client.start_link(userId,nTweets,true)
           :ets.insert(:allUsers,{userId,pid,:online})
           GenServer.cast(String.to_atom("User"<>Integer.to_string(userId)),{:login,userId})
         end
-    end
+      end
+      sendAcknowledgement(:userLoginResp)
     {:reply,response,state}
   end
 
-  def handle_call({:logoutUser,userId,_nTweets},_from,state) do
+  def handle_call({:logoutUser,userId,nTweets},_from,state) do
     response=
       if :ets.lookup(:allUsers, userId) == [] do
         "User Id: user#{userId} not found. Logout failed."
       else
-         [{_,pid,_}] = :ets.lookup(:allUsers, userId)
+         [{_,pid,state}] = :ets.lookup(:allUsers, userId)
         :ets.insert(:allUsers,{userId,pid,:offline})
         GenServer.cast(String.to_atom("User"<>Integer.to_string(userId)),{:logout,userId})
       end
+      sendAcknowledgement(:userLogoutResp)
     {:reply,response,state}
   end
 
@@ -186,15 +175,16 @@ defmodule Twitter.Server do
     {:noreply,state}
   end
 
-  def handle_call({:fetchAllMentionsAndHashtags, key},_, state) do
-    list =
-      if :ets.lookup(:mentionsHashtags, key) != [] do
-        [{_,list}] = :ets.lookup(:mentionsHashtags, key)
-        list
-      else
-        []
-      end
-    {:reply,list,state}
+  def handle_cast({:fetchAllMentionsAndHashtags, key, userId},state) do
+    list = if :ets.lookup(:mentionsHashtags, key) != [] do
+      [{_,list}] = :ets.lookup(:mentionsHashtags, key)
+      list
+    else
+      []
+    end
+    send(String.to_atom("User"<>Integer.to_string(userId)), {:queryResult,list})
+    sendAcknowledgement(:queryTweet)
+    {:noreply,state}
   end
 
   def handle_cast({:addFollower,userId,tofollowID},state) do
@@ -202,6 +192,7 @@ defmodule Twitter.Server do
       update_followers_list(tofollowID,userId)
       update_following_list(userId,tofollowID)
     end
+    # sendAcknowledgement(:userFollowingResp)
     {:noreply,state}
   end
 
@@ -219,7 +210,6 @@ defmodule Twitter.Server do
 
     #hashtags in tweet
     hashtagsList = Regex.scan(~r/\B#[a-zA-Z0-9_]+/, tweet) |> Enum.concat
-
     Enum.each(hashtagsList, fn(hashtag)->
       insert_tag(hashtag,tweet)
     end)
@@ -241,6 +231,7 @@ defmodule Twitter.Server do
   #       send(follower , {:tweet, [tweet] ++ ["-Tweet from user: "] ++ [user_pid] ++ ["forwarded to follower: "] ++ [follower_pid] })
   #      end)
     #IO.puts "Tweet: #{tweet} processed successfully."
+    sendAcknowledgement(:userTweet)
     {:noreply,state}
   end
 
@@ -256,14 +247,16 @@ defmodule Twitter.Server do
     end
   end
 
-  def tweetLive(tweet, userList, userId) do
+  def tweetLive(tweet, userList, _userId) do
     Enum.each(userList, fn(toUser) ->
       [{_,_,state}] = :ets.lookup(:allUsers, toUser)
       if state == :online do
-        #send(pid , {:tweetLive, tweet<>"-Tweet from: "<>userId})
         GenServer.cast(String.to_atom("User"<>Integer.to_string(toUser)),{:tweetLive,"User#{toUser} received: "<>tweet})
       end
     end)
   end
 
+  def sendAcknowledgement(response) do
+    send(:global.whereis_name(:main), {response})
+  end
 end

@@ -23,13 +23,14 @@ defmodule Proj4Test do
     IO.puts "####################################################"
     IO.puts "Check weather users can be registered"
     {:ok,_} = Twitter.Server.start_link()
+    :global.register_name(:main, self())
     IO.inspect "Register some users"
     Twitter.Server.register_user(1,1,true) |> IO.puts
     Twitter.Server.register_user(2,1,true) |> IO.puts
     Twitter.Server.register_user(3,1,true) |> IO.puts
-    assert :ets.lookup(:allUsers, 1) != []
-    assert :ets.lookup(:allUsers, 2) != []
-    assert :ets.lookup(:allUsers, 3) != []
+    assert :ets.lookup(:allUsers, 1) != []     #check wheather the user was added to the table
+    assert :ets.lookup(:allUsers, 2) != []     #check wheather the user was added to the table
+    assert :ets.lookup(:allUsers, 3) != []     #check wheather the user was added to the table
     IO.puts "The users were successfully added to the tables"
     IO.puts "#####################################################"
     IO.puts " "
@@ -41,8 +42,9 @@ defmodule Proj4Test do
     IO.puts "#########################################################"
     IO.puts "Check weather duplicate user can be registered"
     {:ok,_} = Twitter.Server.start_link()
+    :global.register_name(:main, self())
     Twitter.Server.register_user(1,1,true) |> IO.puts
-    IO.puts "Try adding the same user again"
+    IO.puts "Try adding the same user1 again"
     Twitter.Server.register_user(1,12,true) |> IO.puts
     [{_,clientPID,_}] = :ets.lookup(:allUsers, 1)
     IO.puts "#########################################################"
@@ -55,13 +57,14 @@ defmodule Proj4Test do
     IO.puts "#########################################################"
     IO.puts "Delete an account and verify whether it is removed from all the tables"
     {:ok,_} = Twitter.Server.start_link()
+    :global.register_name(:main, self())
     Twitter.Server.register_user(1,1,true) |> IO.puts
     Twitter.Server.delete_user(1) |> IO.puts
-    assert :ets.lookup(:allUsers, 1) == []
-    assert :ets.lookup(:following, 1) == []
-    assert :ets.lookup(:followers, 1) == []
-    assert :ets.lookup(:tweetsMade, 1) == []
-    IO.puts "The user successfully removed from all the tables"
+    assert :ets.lookup(:allUsers, 1) == []  #check if the user was deleted from the allUsers table
+    assert :ets.lookup(:following, 1) == [] #check if the user was deleted from the following table
+    assert :ets.lookup(:followers, 1) == []  #check if the user was deleted from the followers table
+    assert :ets.lookup(:tweetsMade, 1) == []  #check if the user was deleted from the tweetsMade table
+    IO.puts "The user was removed from all the tables"
     IO.puts "#########################################################"
     IO.puts " "
   end
@@ -72,6 +75,7 @@ defmodule Proj4Test do
     IO.puts "#########################################################"
     IO.puts "Try deleting an account not present"
     Twitter.Server.start_link()
+    :global.register_name(:main, self())
     IO.inspect "Register some users"
     Twitter.Server.register_user(1,1,true) |> IO.puts
     Twitter.Server.register_user(2,1,true) |> IO.puts
@@ -79,7 +83,7 @@ defmodule Proj4Test do
     assert :ets.lookup(:allUsers, 1) != []
     assert :ets.lookup(:allUsers, 2) != []
     assert :ets.lookup(:allUsers, 3) != []
-    IO.puts "Try deleting user 4 not present"
+    IO.puts "Try deleting user 4 which is not present"
     Twitter.Server.delete_user(4) |> IO.puts
     IO.puts "#########################################################"
     IO.puts " "
@@ -91,6 +95,7 @@ defmodule Proj4Test do
     IO.puts "#########################################################"
     IO.puts "User follows another user check"
     Twitter.Server.start_link()
+    :global.register_name(:main, self())
     Twitter.Server.register_user(1,1,true) |> IO.puts
     Twitter.Server.register_user(2,1,true) |> IO.puts
     Twitter.Server.register_user(3,1,true) |> IO.puts
@@ -101,22 +106,24 @@ defmodule Proj4Test do
     :timer.sleep(10) #since add followers function is a cast call, introduce a delay before checking th result
     IO.puts "The updated followers list of user1 is:"
     IO.inspect Twitter.Server.get_followers(1)
+    :timer.sleep(20)
     IO.puts "#########################################################"
     IO.puts " "
   end
-
+##check from here
   @tag testCase: 7
   test "sending tweets" do
     IO.puts " "
     IO.puts "#########################################################"
-    IO.puts "User tweets a message and is displayed to his/her followers"
+    IO.puts "Test: User tweets a message and is displayed to his/her followers "
     Twitter.Server.start_link()
+    :global.register_name(:main, self())
     Twitter.Server.register_user(1,1,true) |> IO.puts
     Twitter.Server.register_user(2,1,true) |> IO.puts
     Twitter.Server.register_user(3,1,true) |> IO.puts
     Twitter.Server.add_follower(2,1) #user 2 following user 1
     Twitter.Server.add_follower(3,1) #user 3 following user 1
-    #all the users are currently active. So, they should recieve the any tweet made by User 1
+    #all the users are currently active. So, they should recieve the tweet made by User 1
     :timer.sleep(10)
     tweet_string = "check tweet"
     Twitter.Client.tweet(1,tweet_string)
@@ -131,6 +138,7 @@ defmodule Proj4Test do
     IO.puts "#########################################################"
     IO.puts "User tweets made by a user not displayed to logged of users"
     Twitter.Server.start_link()
+    :global.register_name(:main, self())
     Twitter.Server.register_user(1,1,true) |> IO.puts
     Twitter.Server.register_user(2,1,true) |> IO.puts
     Twitter.Server.register_user(3,1,true) |> IO.puts
@@ -149,26 +157,31 @@ defmodule Proj4Test do
   test "check login and logout" do
     IO.puts " "
     IO.puts "#########################################################"
-    IO.puts "Check if a user can be logged in"
+    IO.puts "Check if a user can be logged in and logged out"
     Twitter.Server.start_link()
+    :global.register_name(:main, self())
     Twitter.Server.register_user(1,1,true) |> IO.puts ##user would be logged in when registering
     Twitter.Server.login_user(1)
-    {_,_,status} = Twitter.Client.get_state(1)
+    {_,_,status,_} = Twitter.Client.get_state(1)
     assert status == true ##verify whether the status is true
     Twitter.Server.logout_user(1)
-    {_,_,status} = Twitter.Client.get_state(1)
+    {_,_,status,_} = Twitter.Client.get_state(1)
     assert status == false #verify whether the state of the client gets updated to false
     :timer.sleep(10)
     IO.puts "#########################################################"
     IO.puts " "
   end
 
+
+
+
   @tag testCase: 10
-  test "retweet" do
+  test "retweet with hashtag querying" do
     IO.puts " "
     IO.puts "#########################################################"
     IO.puts "Retweet functionality"
     Twitter.Server.start_link()
+    :global.register_name(:main, self())
     Twitter.Server.register_user(1,1,true) |> IO.puts
     Twitter.Server.register_user(2,1,true) |> IO.puts
     Twitter.Server.register_user(3,1,true) |> IO.puts
@@ -179,23 +192,25 @@ defmodule Proj4Test do
     :timer.sleep(10)
     tweet_string = "#COP5615 is great"
     Twitter.Client.tweet(1,tweet_string) #users 2 and 3 should have recieved the message
-
+    :timer.sleep(30)
     # # user 2 querying the hashtag and retweeting to its followers
-    {_,list,_} = Twitter.Main.queryByHashtag(1,"#COP5615")
-
-    Twitter.Client.retweet(2, list)#since user 4 follows user 2, it should recieve the retweet made by user 2 live
+    Twitter.Main.queryByHashtag(1,"#COP5615")
+    #the queries with the given hashtag should be printed out
+    Twitter.Main.waitFor(:queryTweet, 1)
+    #the retweet was recieved by the user4 since it folloes user 1 and is live
     :timer.sleep(20)
     IO.puts "#########################################################"
     IO.puts " "
   end
 
   @tag testCase: 11
-  test "query mentions" do
+  test "mentions displayed live" do
     IO.puts " "
     IO.puts "#########################################################"
-    IO.puts "Query mentions functionality"
+    IO.puts "Mentions displayed live functionality"
     #Register some users
     Twitter.Server.start_link()
+    :global.register_name(:main, self())
     Twitter.Server.register_user(1,1,true) |> IO.puts
     Twitter.Server.register_user(2,1,true) |> IO.puts
     Twitter.Server.register_user(3,1,true) |> IO.puts
@@ -203,13 +218,9 @@ defmodule Proj4Test do
     #user1 mentioning user 2 in his tweet
     tweet = "Hello there @User#{2}."
     Twitter.Client.tweet(1, tweet)
-    :timer.sleep(10)
+    #Since user 2 is online when registering, the mention should displayed live in his feed
+    :timer.sleep(100)
 
-    #user2 querying for his mentions
-    mentions = Twitter.Client.queryMentions(2)
-    #Print out all the tweets that mentioned user 2
-    Enum.each(mentions,fn mention -> IO.puts(mention) end)
-    :timer.sleep(10)
   end
 
 
